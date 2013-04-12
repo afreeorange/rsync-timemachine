@@ -1,0 +1,212 @@
+#!/bin/bash
+
+# Maintain 'n' number of snapshots at any given time. 
+# Complimentary to backup
+# https://github.com/afreeorange/rsync-timemachine
+# This needs a MASSIVE rewrite
+
+# Nikhil Anand <anand.nikhil@gmail.com>
+# Mon Oct 25 09:22:28 CDT 2010
+
+# General purpose mailer subroutine. 
+mailreport() {
+        ADMINEMAIL="admin@localhost"
+        SUBJECTSTUB=$1
+        MESSAGEFILE=$2
+
+        mail -s "rote - $SUBJECTSTUB" $ADMINEMAIL < $MESSAGEFILE
+}
+
+# Emulate the 'seq' command for OS X. This _could_ be done with 'jot', but I'm le lazy.
+function mac_seq() {
+	counter="$1"
+	max="$2"
+
+	if [ "$#" -eq 2 ] ; then
+	  step=1
+	else
+	  step=$3
+	fi
+
+	while [ $counter -le $max ] ; do
+	  echo $counter
+	  counter=$(expr $counter + $step)
+	done
+
+	return 0
+}
+
+# A little information
+if [ $# -lt 2 ]; then
+	echo -e "Usage: `basename $0` <backup target> <no. of snapshots>"
+	echo -e "       Will look for snapshots formatted like yyyy-mm-ddThh.mm.ss"
+        echo -e "       An example is any file or directory with \"2010-08-09T16.01.28\" in its name"
+	echo -e "       If it exists, the 'logs' folder will be cleaned too"
+	exit
+fi
+
+# Log the start time
+STARTDATE=`date "+%Y-%m-%dT%H.%M.%S"`
+
+# Set the internal file separator since we're using arrays
+IFS='
+'
+# Collect params
+LOCALBACKUPTARGET=$1
+SNAPSHOTNUMBER=$2
+
+# Define a log file; accommodate backup scripts that don't create logs
+if [ ! -d $LOCALBACKUPTARGET/'logs' ]; then
+       ROTATELOG=/tmp/rotatelog.$STARTDATE
+else
+       ROTATELOG="$LOCALBACKUPTARGET/logs/rotatelog.$STARTDATE"
+fi
+
+# Start logging
+echo -e "Started         : $STARTDATE"         >> $ROTATELOG
+echo -e "Target          : $LOCALBACKUPTARGET" >> $ROTATELOG
+echo -e "Logfile         : $ROTATELOG"         >> $ROTATELOG
+echo -e "No. to maintain : $SNAPSHOTNUMBER"    >> $ROTATELOG
+
+###### BEGIN SANITY CHECK #####
+
+# Check for the existence of the backup folder 
+if [ ! -d $LOCALBACKUPTARGET ]; then
+        echo -e "\n---- Error ----\n" >> $ROTATELOG
+	echo -e "Could not find backup folder $LOCALBACKUPTARGET" >> $ROTATELOG
+        mailreport "Error - Rotation - $LOCALBACKUPTARGET" $ROTATELOG
+        mv $ROTATELOG{,.error}
+	exit
+fi
+
+# Get the number of backup entities (dirs and logdirs)
+BACKUPNUMBER=$(find $LOCALBACKUPTARGET      -maxdepth 1         | sort | grep '\<[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>' | wc -l)
+LOGLIST=($(find     $LOCALBACKUPTARGET/logs -maxdepth 1 -type f | sort | grep '\<.*backuplog.[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>'))
+LOGNUMBER=$(find    $LOCALBACKUPTARGET/logs -maxdepth 1 -type f | sort | grep '\<.*backuplog.[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>' | wc -l)
+LOGSTOMAINTAIN=$(($SNAPSHOTNUMBER * 2))
+
+# Nothing in the directory?
+if [ $BACKUPNUMBER -eq "0" ]; then
+
+    # TODO: Log files?
+
+    echo -e "\n---- Error ----\n" >> $ROTATELOG
+	echo -e "No backup entities found in the specified directory ($LOCALBACKUPTARGET)" >> $ROTATELOG
+
+	echo -e "Log file archived in $ROTATELOG.error" >> $ROTATELOG
+        mailreport "Error - Rotation - $LOCALBACKUPTARGET" $ROTATELOG
+        mv $ROTATELOG{,.error}
+	exit
+
+# If this is a 'sync' backup, we have one backup dir and MANY log files
+elif [ $BACKUPNUMBER -eq "1" ]; then
+        echo -e "Type of backup  : $LOCALBACKUPTARGET" >> $ROTATELOG
+        
+
+# More than one backup directory detected at this point; one last check
+else
+    # More snapshots than existing directories?
+    if [ $SNAPSHOTNUMBER -ge $BACKUPNUMBER ]; then
+            echo -e "\n---- Error ----\n" >> $ROTATELOG
+            echo -e "Not enough entities exist ($BACKUPNUMBER) for requested snapshots ($SNAPSHOTNUMBER)" >> $ROTATELOG
+
+            echo -e "Log file archived in $ROTATELOG.error" >> $ROTATELOG
+            mailreport "Error - Rotation - $LOCALBACKUPTARGET" $ROTATELOG
+            mv $ROTATELOG{,.error}
+            exit
+    fi
+fi
+
+# Cheekiness?
+if [ $SNAPSHOTNUMBER -eq "0" ]; then
+        echo -e "\n---- Error ----\n" >> $ROTATELOG
+	echo -e "Think of specifying zero as a snapshot number.." >> $ROTATELOG
+	echo -e "Look at it and tell me if there's a point to running this script... smartass." >> $ROTATELOG
+
+	echo -e "Log file archived in $ROTATELOG.error" >> $ROTATELOG
+        mailreport "Error - Rotation - $LOCALBACKUPTARGET" $ROTATELOG
+        mv $ROTATELOG{,.error}
+	exit
+fi
+
+# Check platform and set the seq command 
+if [ `uname` == "Linux" ]; then
+        SEQ_COMMAND=$(which seq)
+else
+        SEQ_COMMAND=mac_seq
+fi
+
+###### END SANITY CHECK ######
+
+# Collect a list of backup entities. Assumed that they are in YYYY-MM-DDTHH.MM.SSZ (ISO8601) format
+DIRLIST=($(find $LOCALBACKUPTARGET -maxdepth 1 | sort | grep '\<[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>'))
+echo -e "No. of backups  : $BACKUPNUMBER" >> $ROTATELOG
+
+# Define a temporary removal log
+TEMPLOG=$(mktemp /tmp/XXXXXXXX)
+echo -e "Removal log     : $TEMPLOG"           >> $ROTATELOG
+echo -e "\n----- Begin removal log -----\n\nFound Entities:" >> $TEMPLOG
+
+# Seems like everything is okay; start deleting and logging the directory deleted
+NUMBERCLEANED=$(( BACKUPNUMBER - SNAPSHOTNUMBER - 1 ))
+for i in $($SEQ_COMMAND 0 $NUMBERCLEANED); do
+	echo ${DIRLIST[i]} >> $TEMPLOG
+	chmod -R ug+rwx ${DIRLIST[i]}
+	rm -rf ${DIRLIST[i]}
+done
+
+# Prepare list of directories which are left
+echo -e "\nThe following still exist:" >> $TEMPLOG
+find $LOCALBACKUPTARGET -maxdepth 1 | sort | grep '\<[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>' >> $TEMPLOG
+
+# Now start removing backup logs, if they exist
+if [ -d $LOCALBACKUPTARGET/'logs' ]; then
+    echo -e "\nRemoving old backup logs" >> $TEMPLOG
+
+    # Since there is a summary and full log for each backup, a little arithmetic is necessary
+    LOGLIST=($(find $LOCALBACKUPTARGET/logs -maxdepth 1 -type f | sort | grep '\<.*backuplog.[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>'))
+    LOGNUMBER=$(find $LOCALBACKUPTARGET/logs -maxdepth 1 -type f | sort | grep '\<.*backuplog.[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>' | wc -l)
+    LOGSTOMAINTAIN=$(($SNAPSHOTNUMBER * 2))
+
+    # Start removing snapshot logs
+    for i in $($SEQ_COMMAND 0 $(( LOGNUMBER - LOGSTOMAINTAIN - 1 ))); do
+            echo ${LOGLIST[i]} >> $TEMPLOG
+            chmod -R ug+rwx ${LOGLIST[i]}
+            rm -rf ${LOGLIST[i]}
+    done
+
+    # Now clean the rotation logs
+    echo -e "\nCleaning old rotation log(s), if any..." >> $TEMPLOG
+    find $LOCALBACKUPTARGET/logs -maxdepth 1 -type f | sort | grep '\<rotatelog.[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>' >> $TEMPLOG
+    find $LOCALBACKUPTARGET/logs -maxdepth 1 -type f | sort | grep '\<rotatelog.[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>' | grep -v $ROTATELOG | xargs rm -rf
+fi
+
+# Log finish time
+FINISHTIME=`date "+%Y-%m-%dT%H.%M.%S"`
+echo -e "Finished        : $FINISHTIME" >> $ROTATELOG
+
+# Since we're rotating, a catalog must exit (of type SERVERNAME.catalog)
+CATALOG="$LOCALBACKUPTARGET/logs/catalog"
+if [ -e $CATALOG ]; then
+    echo -n "rote " >> $CATALOG
+    CATALOGCOUNT=$(printf "(%3d,%3d)" $BACKUPNUMBER $SNAPSHOTNUMBER)
+    echo -n $CATALOGCOUNT" " >> $CATALOG
+    echo -n $STARTDATE"  "   >> $CATALOG
+    echo $FINISHTIME"  "     >> $CATALOG
+else
+    echo "\nCould not append operation to catalog in $LOCALBACKUPTARGET/logs/; file does not exist!" >> $TEMPLOG
+fi
+
+# Append the removal log to the full log and remove it
+cat $TEMPLOG >> $ROTATELOG
+rm -f $TEMPLOG
+
+# Email the administrator
+mailreport "$LOCALBACKUPTARGET" $ROTATELOG
+
+# Gzip or delete the log file
+if [ ! -d $LOCALBACKUPTARGET/'logs' ]; then
+        rm -f $ROTATELOG
+else
+        gzip -9 $ROTATELOG
+fi

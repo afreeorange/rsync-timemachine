@@ -1,0 +1,416 @@
+#!/bin/bash
+
+# rsync-based backup script for Linux and OS X
+# https://github.com/afreeorange/rsync-timemachine
+
+# by Nikhil Anand <nikhil@mantralay.org>
+# Sun Oct 24 22:39:55 CDT 2010
+
+# General purpose mailer subroutine. 
+mailreport() {
+    EMAILADDRESS=$1
+    SUBJECT=$2
+    MESSAGEFILE=$3
+
+    mail -s "$SUBJECT" $EMAILADDRESS < $MESSAGEFILE
+}
+
+# Expand rsync error codes
+expand_rsync_exit_code() {
+        EXITCODE=$1
+        case $EXITCODE in
+            1) echo -e "Syntax or usage error";;
+            2) echo -e "Protocol incompatibility";;
+            3) echo -e "Errors selecting input/output files, dirs";;
+            4) echo -e "Requested  action not supported: an attempt was made to manipulate 64-bit files on a platform that cannot support them; or an option was specified that is supported by the client and not by the server.";;
+            5) echo -e "Error starting client-server protocol";;
+            6) echo -e "Daemon unable to append to log-file";;
+           10) echo -e "Error in socket I/O";;
+           11) echo -e "Error in file I/O";;
+           12) echo -e "Error in rsync protocol data stream (insufficient disk space?)";;
+           13) echo -e "Errors with program diagnostics";;
+           14) echo -e "Error in IPC code";;
+           20) echo -e "Received SIGUSR1 or SIGINT";;
+           21) echo -e "Some error returned by waitpid()";;
+           22) echo -e "Error allocating core memory buffers";;
+           23) echo -e "Partial transfer due to error";;
+           24) echo -e "Partial transfer due to vanished source files (might be normal)";;
+           25) echo -e "The --max-delete limit stopped deletions";;
+           30) echo -e "Timeout in data send/receive";;
+           35) echo -e "Timeout waiting for daemon connection";;
+            *) echo -e "Unknown; most likely a SIGINT (e.g. keyboard interrupt)";;
+        esac
+}
+
+# Resolve symlinks since "readlink -f" won't work on OS X
+# http://stackoverflow.com/a/1116890
+resolve_link() {
+    TARGET_FILE=$1
+
+    cd `dirname $TARGET_FILE`
+    TARGET_FILE=`basename $TARGET_FILE`
+
+    # Iterate down a (possible) chain of symlinks
+    while [ -L "$TARGET_FILE" ]
+    do
+        TARGET_FILE=`readlink $TARGET_FILE`
+        cd `dirname $TARGET_FILE`
+        TARGET_FILE=`basename $TARGET_FILE`
+    done
+
+    # Compute the canonicalized name by finding the physical path 
+    # for the directory we're in and appending the target file.
+    PHYS_DIR=`pwd -P`
+    RESULT=$PHYS_DIR/$TARGET_FILE
+    echo $RESULT
+}
+
+# Log the time started
+STARTDATE=`date "+%Y-%m-%dT%H.%M.%S"`
+
+# Check for the mail command
+which mail &> /dev/null
+if [ $? -ne 0 ]; then
+    echo -e "mail command not found. Aborting" 
+    exit
+fi
+
+# Check for rsync
+which rsync &> /dev/null
+if [ $? -ne 0 ]; then
+    echo -e "rsync command not found. Aborting"
+    exit
+fi
+
+# Usage information
+if [ $# -eq 0 ]; then
+	echo -e "
+`basename $0` [OPTIONS]
+
+Options
+ -s   absolute path to source 
+ -d   backup destination
+ -t   type of backup: sync, snap or diff
+      default is 'snap'
+ -f   any extra flags to the rsync command (e.g. ssh)
+ -i   a file containing patterns to include in the backup
+ -e   a file containing patterns to exclude from the backup
+ -m   email address to mail reports to
+ -q   be quiet and show no output
+"
+	exit 
+fi
+
+
+BEQUIET=false
+EMAILADDRESS=""
+while getopts ":s:d:t:i:e:f:e:m:q" opt; do
+  case $opt in
+    s)
+      SOURCE=$OPTARG
+      ;;
+    d)
+      TARGET=$OPTARG
+      ;;
+    t)
+      BACKUPOPTION=$OPTARG
+      ;;
+    i)
+      BACKUPINCLUDESFILE=$OPTARG
+      ;;
+    e)
+      BACKUPEXCLUDESFILE=$OPTARG
+      ;;
+    f)
+      EXTRAFLAGS=$OPTARG
+      ;;
+    p)
+      SSHPORT=$OPTARG
+      ;;
+    m)
+      EMAILADDRESS=$OPTARG
+      ;;
+    q)
+      BEQUIET=true
+      ;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      exit 1
+      ;;
+    :)
+      echo "Option -$OPTARG requires an argument." >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Define log files for transfer reports. Define a process lock.
+EVENTLOG="/tmp/backuplog.$STARTDATE"
+TRANSFERLOG="/tmp/backuplog.$STARTDATE.full"
+SHORTLOG=$TARGET/'logs'/backuplog.$STARTDATE
+LONGLOG=$TARGET/'logs'/backuplog.$STARTDATE.full
+LOCKFILE="/tmp/backuplock"
+
+# Start logging
+echo -e "Started     : $STARTDATE"    >> $EVENTLOG
+echo -e "Type        : $BACKUPOPTION" >> $EVENTLOG
+echo -e "Source      : $SOURCE"       >> $EVENTLOG
+echo -e "Host        : `hostname -s`" >> $EVENTLOG
+echo -e "Destination : $TARGET"       >> $EVENTLOG
+
+# Does local source exist?
+if [ ! -d $SOURCE ]; then
+	echo -e "\nCould not find local source $SOURCE" >> $EVENTLOG
+        if [ "$EMAILADDRESS" != "" ]; then
+            mailreport $EMAILADDRESS "eror - $SOURCESERVER" $EVENTLOG
+        elif [ "$BEQUIET" == "false" ]; then
+            more $EVENTLOG
+        fi
+	exit
+fi
+
+# Does the local target exist?
+if [ ! -d $TARGET ]; then
+	echo -e "\nTarget ($TARGET) does not exist" >> $EVENTLOG
+        if [ "$EMAILADDRESS" != "" ]; then
+            mailreport $EMAILADDRESS "eror - $SOURCESERVER" $EVENTLOG
+        elif [ "$BEQUIET" == "false" ]; then
+            more $EVENTLOG
+        fi
+	exit
+fi
+
+# Valid rsync option specified? (TODO: investigate why using || didn't work...)
+if [ ! -z $BACKUPOPTION ]; then
+    if [ "$BACKUPOPTION" != "sync" ]; then
+        if  [ "$BACKUPOPTION" != "snap" ]; then
+            if  [ "$BACKUPOPTION" != "diff" ]; then
+                echo -e "\nInvalid transfer option specified." >> $EVENTLOG
+                echo -e "Must be one of sync, snap, or diff" >> $EVENTLOG
+
+                if [ "$EMAILADDRESS" != "" ]; then
+                    mailreport $EMAILADDRESS "eror - $SOURCESERVER" $EVENTLOG
+                elif [ "$BEQUIET" == "false" ]; then
+                    more $EVENTLOG
+                fi
+
+                exit
+            fi
+        fi
+    fi
+else
+    BACKUPOPTION="snap"
+fi
+
+# Check for an includes file
+if [ -e "$BACKUPINCLUDESFILE" ] && [ -f $BACKUPINCLUDESFILE ]; then
+	INCLUDESFLAG="--include-from=$BACKUPINCLUDESFILE"
+	echo -e "Includes    : $BACKUPINCLUDESFILE" >> $EVENTLOG
+else
+	INCLUDESFLAG=""
+fi
+
+# Check for an excludes file
+if [ -e "$BACKUPEXCLUDESFILE" ] && [ -f $BACKUPEXCLUDESFILE ]; then
+    INCLUDESFLAG="--exclude-from=$BACKUPEXCLUDESFILE"
+    echo -e "Excludes    : $BACKUPEXCLUDESFILE" >> $EVENTLOG
+else
+    INCLUDESFLAG=""
+fi
+
+# Check if a competing backup process exists
+if [ -e "$LOCKFILE" ]; then
+	echo -e "\nAnother backup job exists for the same client. Aborting." >> $EVENTLOG
+
+        if [ "$EMAILADDRESS" != "" ]; then
+            mailreport $EMAILADDRESS "eror - $SOURCESERVER" $EVENTLOG
+        elif [ "$BEQUIET" == "false" ]; then
+            more $EVENTLOG
+        fi
+
+	exit
+else
+	touch $LOCKFILE
+fi
+
+##### E N D  S A N I T Y   C H E C K #####
+
+# Start some initial setup. Make sure that source-named directory exists at target
+if [ ! -d $TARGET/'latest' ]; then
+
+	FIRSTBACKUP='true'
+        echo -e "Full Backup : Yes" >> $EVENTLOG
+else
+        echo -e "Full Backup : No" >> $EVENTLOG
+fi
+
+# Make sure we have a place to put the final transfer log
+if [ ! -d $TARGET/'logs' ]; then
+	mkdir $TARGET/'logs'
+fi
+
+# Start the catalog; columns are 15, 20, 20 (TODO: use sprintf?)
+CATALOG=$TARGET/'logs'/catalog
+if [ ! -e $CATALOG ]; then
+        echo -e "Operation      Started              Finished" >> $CATALOG
+fi
+if [ "$FIRSTBACKUP" == "true" ]; then
+    echo -n "full           " >> $CATALOG
+else
+    echo -n $BACKUPOPTION"           " >> $CATALOG
+fi
+echo -n $STARTDATE"  " >> $CATALOG
+
+# Configure rsync command params based on backup type
+if [ "$BACKUPOPTION" == "sync" ]; then
+
+        if [ "$FIRSTBACKUP" == "true" ]; then
+	        mkdir $TARGET/$STARTDATE
+	        BACKUPDIRECTORY=$TARGET/$STARTDATE
+        else
+	        BACKUPDIRECTORY=$TARGET/'latest'
+        fi
+
+	LINKFLAG=""
+	DELETEFLAG="--delete"
+
+elif [ "$BACKUPOPTION" == "snap" ]; then
+
+	if [ ! -d $TARGET/$STARTDATE ]; then
+		mkdir $TARGET/$STARTDATE
+	fi
+
+	BACKUPDIRECTORY=$TARGET/$STARTDATE
+
+	# Set the hard link flag since we're taking snapshots
+	if [ "$FIRSTBACKUP" != "true" ]; then
+		LINKFLAG="--link-dest=$TARGET/latest/"
+	else
+		LINKFLAG=""
+	fi
+	DELETEFLAG=""
+
+else
+
+	if [ ! -d $TARGET/$STARTDATE ]; then
+		mkdir $TARGET/$STARTDATE
+	fi
+
+	BACKUPDIRECTORY=$TARGET/$STARTDATE
+
+    if [ "$FIRSTBACKUP" != "true" ]; then
+        # Add a message to the transfer log to differentiate 'diff' from 'snap'
+        DIFFMESSAGE=${DIFFMESSAGE}"Incremental-only option selected."
+        LINKFLAG="-c --compare-dest=$TARGET/latest/"
+    else
+        LINKFLAG=""
+    fi
+	DELETEFLAG=""
+
+fi
+
+# Perform the actual transfer over SSH
+rsync -avh --no-whole-file --numeric-ids --progress --stats $INCLUDESFLAG $LINKFLAG $DELETEFLAG $EXTRAFLAGS "$SOURCE" "$BACKUPDIRECTORY" 2>&1 >> $TRANSFERLOG
+
+# Log the exit code
+RSYNCEXITCODE=$?
+
+# Log finish time
+FINISHTIME=`date "+%Y-%m-%dT%H.%M.%S"`
+
+# Descend into target directory
+cd $TARGET
+
+# Check for errors. If everything's okay:
+if [ $RSYNCEXITCODE -eq 0 ] || [ $RSYNCEXITCODE -eq 23 ] || [ $RSYNCEXITCODE -eq 24 ]; then
+
+    # For 'diff' transfers, rsync copies directories, even if there's nothing in them. Clean 'em up!
+    if [ "$BACKUPOPTION" == "diff" ]; then
+        # This could fail if 'find' doesn't have the -empty and -delete flags on certain systems...
+        find $TARGET/latest/ -depth -type d -empty -delete &> /dev/null
+    fi
+
+    # Prepare nice email subject        
+    EMAILSUBJECT="$BACKUPOPTION - `hostname -s`"
+
+    # Log when most of the process is complete
+    echo $FINISHTIME"  " >> $CATALOG
+
+    echo -e "Summary Log  : $SHORTLOG.gz" >> $EVENTLOG
+    echo -e "Transfer Log : $LONGLOG.gz" >> $EVENTLOG
+    echo -e "Finished     : $FINISHTIME" >> $EVENTLOG
+
+    # Log reference directory if incremental backup
+    if [ "$BACKUPOPTION" == "diff" ]; then
+        echo -e "\n---- Other notes ----\n" >> $EVENTLOG
+        echo $DIFFMESSAGE >> $EVENTLOG
+
+    # Or the number of snapshots 
+    elif [ "$BACKUPOPTION" == "snap" ]; then
+        echo -e "\n---- Other notes ----\n" >> $EVENTLOG
+        SNAPSHOTNUMBER=$(find $TARGET -maxdepth 1 -type d | sort | grep '\<[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>' | wc -l)
+        echo -e "There exist $SNAPSHOTNUMBER snapshot(s) at the destination" >> $EVENTLOG
+    fi
+
+    # Show the last few lines of the rsync command
+    echo -e "\n---- Transfer Summary ----" >> $EVENTLOG
+    cat $TRANSFERLOG | tail -n 15 >> $EVENTLOG
+
+    # Show drive usage
+    echo -e "\n---- Drive Map  ----\n" >> $EVENTLOG
+    df -ah >> $EVENTLOG
+
+    if [ "$EMAILADDRESS" != "" ]; then
+        mailreport $EMAILADDRESS "$EMAILSUBJECT" $EVENTLOG
+    elif [ "$BEQUIET" == "false" ]; then
+        cat $EVENTLOG
+    fi
+
+    # Copy log files to their intended destination and compress them
+    mv $EVENTLOG $SHORTLOG
+    mv $TRANSFERLOG $LONGLOG
+    gzip $SHORTLOG $LONGLOG
+
+    # Finally, move the 'latest' symlink
+    if [ -s 'latest' ]; then
+        if [ "$BACKUPOPTION" == "sync" ]; then
+            LASTSYNCPATH=$(resolve_link latest)
+            mv $LASTSYNCPATH $TARGET/$STARTDATE
+        fi
+        rm 'latest'
+    fi
+    ln -s $STARTDATE 'latest'
+
+# Errors encountered, so:
+else
+
+    # Rename the target directory
+    mv $STARTDATE $STARTDATE.incomplete
+
+    # Prepare depressing email subject
+    EMAILSUBJECT="eror - `hostname -s`" 
+
+    # Log error
+    ERRORDESCRIPTION=$(expand_rsync_exit_code $RSYNCEXITCODE)
+    echo -e "\nExit Code   : $RSYNCEXITCODE" >> $EVENTLOG
+    echo -e "Description : $ERRORDESCRIPTION" >> $EVENTLOG
+    echo -e "Error File  : $EVENTLOG" >> $EVENTLOG
+    echo -e "\nThe backup script encountered an error. The error log specified above has not been removed." >> $EVENTLOG
+
+    # Spit error output
+    echo -e "\n ---- Raw error output (last 15 lines) ----\n" >> $EVENTLOG
+    cat $TRANSFERLOG | tail -n 15 >> $EVENTLOG
+
+    # Finish the catalog
+    echo "No                   " >> $CATALOG
+
+    if [ "$EMAILADDRESS" != "" ]; then
+        mailreport $EMAILADDRESS "$EMAILSUBJECT" $EVENTLOG
+    elif [ "$BEQUIET" == "false" ]; then
+        cat $EVENTLOG
+    fi
+
+fi
+
+# Remove lock file
+rm $LOCKFILE
