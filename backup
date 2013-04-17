@@ -7,7 +7,7 @@
 # Sun Oct 24 22:39:55 CDT 2010
 
 # General purpose mailer subroutine. 
-mailreport() {
+function mailreport() {
     EMAILADDRESS=$1
     SUBJECT=$2
     MESSAGEFILE=$3
@@ -16,7 +16,7 @@ mailreport() {
 }
 
 # Expand rsync error codes
-expand_rsync_exit_code() {
+function expand_rsync_exit_code() {
         EXITCODE=$1
         case $EXITCODE in
             1) echo -e "Syntax or usage error";;
@@ -44,7 +44,7 @@ expand_rsync_exit_code() {
 
 # Resolve symlinks since "readlink -f" won't work on OS X
 # http://stackoverflow.com/a/1116890
-resolve_link() {
+function resolve_link() {
     TARGET_FILE=$1
 
     cd `dirname $TARGET_FILE`
@@ -65,8 +65,26 @@ resolve_link() {
     echo $RESULT
 }
 
+# Usage information
+function usage() {
+  echo -e "
+`basename $0` [OPTIONS]
+
+Options
+ -s   absolute path to source 
+ -d   backup destination
+ -t   type of backup: sync, snap or diff (default is 'snap')
+ -f   any extra flags to the rsync command (e.g. ssh)
+ -i   a file containing patterns to include in the backup
+ -e   a file containing patterns to exclude from the backup
+ -m   email address to mail reports to
+ -q   be quiet and show no output
+"
+  exit 
+}
+
 # Log the time started
-STARTDATE=`date "+%Y-%m-%dT%H.%M.%S"`
+TIME_STARTED=`date "+%Y-%m-%dT%H.%M.%S"`
 
 # Check for the mail command
 which mail &> /dev/null
@@ -82,26 +100,12 @@ if [ $? -ne 0 ]; then
     exit
 fi
 
-# Usage information
+# Show usage if no params
 if [ $# -eq 0 ]; then
-	echo -e "
-`basename $0` [OPTIONS]
-
-Options
- -s   absolute path to source 
- -d   backup destination
- -t   type of backup: sync, snap or diff
-      default is 'snap'
- -f   any extra flags to the rsync command (e.g. ssh)
- -i   a file containing patterns to include in the backup
- -e   a file containing patterns to exclude from the backup
- -m   email address to mail reports to
- -q   be quiet and show no output
-"
-	exit 
+  usage
 fi
 
-
+# Start collecting params
 BEQUIET=false
 EMAILADDRESS=""
 while getopts ":s:d:t:i:e:f:e:m:q" opt; do
@@ -145,39 +149,40 @@ while getopts ":s:d:t:i:e:f:e:m:q" opt; do
 done
 
 # Define log files for transfer reports. Define a process lock.
-EVENTLOG="/tmp/backuplog.$STARTDATE"
-TRANSFERLOG="/tmp/backuplog.$STARTDATE.full"
-SHORTLOG=$TARGET/'logs'/backuplog.$STARTDATE
-LONGLOG=$TARGET/'logs'/backuplog.$STARTDATE.full
+EVENTLOG="/tmp/backuplog.$TIME_STARTED"
+TRANSFERLOG="/tmp/backuplog.$TIME_STARTED.full"
+SHORTLOG=$TARGET/'logs'/backuplog.$TIME_STARTED
+LONGLOG=$TARGET/'logs'/backuplog.$TIME_STARTED.full
 LOCKFILE="/tmp/backuplock"
+SOURCESERVER=$(hostname -s)
 
 # Start logging
-echo -e "Started     : $STARTDATE"    >> $EVENTLOG
+echo -e "Started     : $TIME_STARTED"     > $EVENTLOG
 echo -e "Type        : $BACKUPOPTION" >> $EVENTLOG
 echo -e "Source      : $SOURCE"       >> $EVENTLOG
-echo -e "Host        : `hostname -s`" >> $EVENTLOG
+echo -e "Host        : $SOURCESERVER" >> $EVENTLOG
 echo -e "Destination : $TARGET"       >> $EVENTLOG
 
 # Does local source exist?
 if [ ! -d $SOURCE ]; then
-	echo -e "\nCould not find local source $SOURCE" >> $EVENTLOG
-        if [ "$EMAILADDRESS" != "" ]; then
-            mailreport $EMAILADDRESS "eror - $SOURCESERVER" $EVENTLOG
-        elif [ "$BEQUIET" == "false" ]; then
-            more $EVENTLOG
-        fi
-	exit
+  echo -e "\nCould not find local source $SOURCE" >> $EVENTLOG
+  if [ "$EMAILADDRESS" != "" ]; then
+      mailreport $EMAILADDRESS "eror - $SOURCESERVER" $EVENTLOG
+  elif [ "$BEQUIET" == "false" ]; then
+      more $EVENTLOG
+  fi
+  exit 1
 fi
 
 # Does the local target exist?
 if [ ! -d $TARGET ]; then
-	echo -e "\nTarget ($TARGET) does not exist" >> $EVENTLOG
-        if [ "$EMAILADDRESS" != "" ]; then
-            mailreport $EMAILADDRESS "eror - $SOURCESERVER" $EVENTLOG
-        elif [ "$BEQUIET" == "false" ]; then
-            more $EVENTLOG
-        fi
-	exit
+  echo -e "\nTarget ($TARGET) does not exist" >> $EVENTLOG
+  if [ "$EMAILADDRESS" != "" ]; then
+      mailreport $EMAILADDRESS "eror - $SOURCESERVER" $EVENTLOG
+  elif [ "$BEQUIET" == "false" ]; then
+      more $EVENTLOG
+  fi
+  exit 1
 fi
 
 # Valid rsync option specified? (TODO: investigate why using || didn't work...)
@@ -194,7 +199,7 @@ if [ ! -z $BACKUPOPTION ]; then
                     more $EVENTLOG
                 fi
 
-                exit
+                exit 1
             fi
         fi
     fi
@@ -204,10 +209,10 @@ fi
 
 # Check for an includes file
 if [ -e "$BACKUPINCLUDESFILE" ] && [ -f $BACKUPINCLUDESFILE ]; then
-	INCLUDESFLAG="--include-from=$BACKUPINCLUDESFILE"
-	echo -e "Includes    : $BACKUPINCLUDESFILE" >> $EVENTLOG
+  INCLUDESFLAG="--include-from=$BACKUPINCLUDESFILE"
+  echo -e "Includes    : $BACKUPINCLUDESFILE" >> $EVENTLOG
 else
-	INCLUDESFLAG=""
+  INCLUDESFLAG=""
 fi
 
 # Check for an excludes file
@@ -220,17 +225,15 @@ fi
 
 # Check if a competing backup process exists
 if [ -e "$LOCKFILE" ]; then
-	echo -e "\nAnother backup job exists for the same client. Aborting." >> $EVENTLOG
-
-        if [ "$EMAILADDRESS" != "" ]; then
-            mailreport $EMAILADDRESS "eror - $SOURCESERVER" $EVENTLOG
-        elif [ "$BEQUIET" == "false" ]; then
-            more $EVENTLOG
-        fi
-
-	exit
+  echo -e "\nAnother backup job exists for the same client. Aborting." >> $EVENTLOG
+  if [ "$EMAILADDRESS" != "" ]; then
+      mailreport $EMAILADDRESS "eror - $SOURCESERVER" $EVENTLOG
+  elif [ "$BEQUIET" == "false" ]; then
+      more $EVENTLOG
+  fi
+  exit 1
 else
-	touch $LOCKFILE
+  touch $LOCKFILE
 fi
 
 ##### E N D  S A N I T Y   C H E C K #####
@@ -238,7 +241,7 @@ fi
 # Start some initial setup. Make sure that source-named directory exists at target
 if [ ! -d $TARGET/'latest' ]; then
 
-	FIRSTBACKUP='true'
+  FIRSTBACKUP='true'
         echo -e "Full Backup : Yes" >> $EVENTLOG
 else
         echo -e "Full Backup : No" >> $EVENTLOG
@@ -246,7 +249,7 @@ fi
 
 # Make sure we have a place to put the final transfer log
 if [ ! -d $TARGET/'logs' ]; then
-	mkdir $TARGET/'logs'
+  mkdir $TARGET/'logs'
 fi
 
 # Start the catalog; columns are 15, 20, 20 (TODO: use sprintf?)
@@ -259,44 +262,44 @@ if [ "$FIRSTBACKUP" == "true" ]; then
 else
     echo -n $BACKUPOPTION"           " >> $CATALOG
 fi
-echo -n $STARTDATE"  " >> $CATALOG
+echo -n $TIME_STARTED"  " >> $CATALOG
 
 # Configure rsync command params based on backup type
 if [ "$BACKUPOPTION" == "sync" ]; then
 
         if [ "$FIRSTBACKUP" == "true" ]; then
-	        mkdir $TARGET/$STARTDATE
-	        BACKUPDIRECTORY=$TARGET/$STARTDATE
+          mkdir $TARGET/$TIME_STARTED
+          BACKUPDIRECTORY=$TARGET/$TIME_STARTED
         else
-	        BACKUPDIRECTORY=$TARGET/'latest'
+          BACKUPDIRECTORY=$TARGET/'latest'
         fi
 
-	LINKFLAG=""
-	DELETEFLAG="--delete"
+  LINKFLAG=""
+  DELETEFLAG="--delete"
 
 elif [ "$BACKUPOPTION" == "snap" ]; then
 
-	if [ ! -d $TARGET/$STARTDATE ]; then
-		mkdir $TARGET/$STARTDATE
-	fi
+  if [ ! -d $TARGET/$TIME_STARTED ]; then
+    mkdir $TARGET/$TIME_STARTED
+  fi
 
-	BACKUPDIRECTORY=$TARGET/$STARTDATE
+  BACKUPDIRECTORY=$TARGET/$TIME_STARTED
 
-	# Set the hard link flag since we're taking snapshots
-	if [ "$FIRSTBACKUP" != "true" ]; then
-		LINKFLAG="--link-dest=$TARGET/latest/"
-	else
-		LINKFLAG=""
-	fi
-	DELETEFLAG=""
+  # Set the hard link flag since we're taking snapshots
+  if [ "$FIRSTBACKUP" != "true" ]; then
+    LINKFLAG="--link-dest=$TARGET/latest/"
+  else
+    LINKFLAG=""
+  fi
+  DELETEFLAG=""
 
 else
 
-	if [ ! -d $TARGET/$STARTDATE ]; then
-		mkdir $TARGET/$STARTDATE
-	fi
+  if [ ! -d $TARGET/$TIME_STARTED ]; then
+    mkdir $TARGET/$TIME_STARTED
+  fi
 
-	BACKUPDIRECTORY=$TARGET/$STARTDATE
+  BACKUPDIRECTORY=$TARGET/$TIME_STARTED
 
     if [ "$FIRSTBACKUP" != "true" ]; then
         # Add a message to the transfer log to differentiate 'diff' from 'snap'
@@ -305,7 +308,7 @@ else
     else
         LINKFLAG=""
     fi
-	DELETEFLAG=""
+  DELETEFLAG=""
 
 fi
 
@@ -316,7 +319,7 @@ rsync -avh --no-whole-file --numeric-ids --progress --stats $INCLUDESFLAG $LINKF
 RSYNCEXITCODE=$?
 
 # Log finish time
-FINISHTIME=`date "+%Y-%m-%dT%H.%M.%S"`
+TIME_FINISHED=`date "+%Y-%m-%dT%H.%M.%S"`
 
 # Descend into target directory
 cd $TARGET
@@ -334,11 +337,11 @@ if [ $RSYNCEXITCODE -eq 0 ] || [ $RSYNCEXITCODE -eq 23 ] || [ $RSYNCEXITCODE -eq
     EMAILSUBJECT="$BACKUPOPTION - `hostname -s`"
 
     # Log when most of the process is complete
-    echo $FINISHTIME"  " >> $CATALOG
+    echo $TIME_FINISHED"  " >> $CATALOG
 
-    echo -e "Summary Log  : $SHORTLOG.gz" >> $EVENTLOG
-    echo -e "Transfer Log : $LONGLOG.gz" >> $EVENTLOG
-    echo -e "Finished     : $FINISHTIME" >> $EVENTLOG
+    echo -e "Summary Log : $SHORTLOG.gz" >> $EVENTLOG
+    echo -e "Transfer Log: $LONGLOG.gz"  >> $EVENTLOG
+    echo -e "Finished    : $TIME_FINISHED"  >> $EVENTLOG
 
     # Log reference directory if incremental backup
     if [ "$BACKUPOPTION" == "diff" ]; then
@@ -348,7 +351,7 @@ if [ $RSYNCEXITCODE -eq 0 ] || [ $RSYNCEXITCODE -eq 23 ] || [ $RSYNCEXITCODE -eq
     # Or the number of snapshots 
     elif [ "$BACKUPOPTION" == "snap" ]; then
         echo -e "\n---- Other notes ----\n" >> $EVENTLOG
-        SNAPSHOTNUMBER=$(find $TARGET -maxdepth 1 -type d | sort | grep '\<[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>' | wc -l)
+        SNAPSHOTNUMBER=$(find $TARGET -maxdepth 1 -type d | sort | grep -c '\<[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>')
         echo -e "There exist $SNAPSHOTNUMBER snapshot(s) at the destination" >> $EVENTLOG
     fi
 
@@ -360,6 +363,7 @@ if [ $RSYNCEXITCODE -eq 0 ] || [ $RSYNCEXITCODE -eq 23 ] || [ $RSYNCEXITCODE -eq
     echo -e "\n---- Drive Map  ----\n" >> $EVENTLOG
     df -ah >> $EVENTLOG
 
+    # Email if specified
     if [ "$EMAILADDRESS" != "" ]; then
         mailreport $EMAILADDRESS "$EMAILSUBJECT" $EVENTLOG
     elif [ "$BEQUIET" == "false" ]; then
@@ -369,23 +373,23 @@ if [ $RSYNCEXITCODE -eq 0 ] || [ $RSYNCEXITCODE -eq 23 ] || [ $RSYNCEXITCODE -eq
     # Copy log files to their intended destination and compress them
     mv $EVENTLOG $SHORTLOG
     mv $TRANSFERLOG $LONGLOG
-    gzip $SHORTLOG $LONGLOG
+    gzip -9 $SHORTLOG $LONGLOG
 
     # Finally, move the 'latest' symlink
     if [ -s 'latest' ]; then
         if [ "$BACKUPOPTION" == "sync" ]; then
             LASTSYNCPATH=$(resolve_link latest)
-            mv $LASTSYNCPATH $TARGET/$STARTDATE
+            mv $LASTSYNCPATH $TARGET/$TIME_STARTED
         fi
         rm 'latest'
     fi
-    ln -s $STARTDATE 'latest'
+    ln -s $TIME_STARTED 'latest'
 
 # Errors encountered, so:
 else
 
     # Rename the target directory
-    mv $STARTDATE $STARTDATE.incomplete
+    mv $TIME_STARTED $TIME_STARTED.incomplete
 
     # Prepare depressing email subject
     EMAILSUBJECT="eror - `hostname -s`" 
@@ -414,3 +418,4 @@ fi
 
 # Remove lock file
 rm $LOCKFILE
+exit 0

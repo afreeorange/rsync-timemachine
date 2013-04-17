@@ -110,6 +110,31 @@ Use `-i` to specify an includes file, `-e` for an excludes file. I mostly just u
     ehthumbs.db
     Thumbs.db
 
+### Rotation & Maintenance
+
+Easy as pie! Just run the `prune` script against the backup destination. For example, if I wanted to keep 7 most recent snapshots in `/destination`,
+
+    ./prune -d /destination -n 7
+
+The number of snapshots is specified with `-n`. It's a default of 10 if (a) you don't specify it, or (b) you're silly and specify a non-integer value.
+
+After removing older snapshots, three things then happen:
+
+* the `logs` folder gets cleaned of older logs
+* a rotation log called `rotatelog-{timestamp}.gz` file is written to `/destination/logs`
+* finally, the `catalog` is updated
+
+In the catalog, you'll see an entry like this
+
+    rote ( 12,  7) 2013-04-08T15.48.53  2013-04-08T15.49.06
+
+This means that the `rotate` script found 12 snapshots (or incrementals) and was asked to *keep* 7. The left and right timestamps correspond to when the rotation started and finished respectively.
+
+I usually run both scripts as `cron` jobs. 
+
+### Other options
+
+If you use the `-q` option, you won't see a report.If you'd like to get email, specify an address with `-m`. In either case, the script will send everything into the scary void that is `/dev/null`.
 
 ### Error-handling
 
@@ -139,31 +164,7 @@ The `catalog` looks like this
 
 **Note**: `rsync` will exit non-zero if a few files have vanished before it could transfer them. I consider this as normal, and the script doesn't complain about it either.
 
-### Rotation & Maintenance
-
-Easy as pie! Just run the `prune` script against the backup destination. For example, if I wanted to keep 7 most recent snapshots in `/destination`,
-
-    ./prune /destination 7
-
-After removing older snapshots, three things then happen:
-
-* the `logs` folder gets cleaned of older logs
-* a rotation log called `rotatelog-{timestamp}.gz` file is written to `/destination/logs`
-* finally, the `catalog` is updated
-
-In the catalog, you'll see an entry like this
-
-    rote ( 12,  7) 2013-04-08T15.48.53  2013-04-08T15.49.06
-
-This means that the `rotate` script found 12 snapshots (or incrementals) and was asked to *keep* 7. The left and right timestamps correspond to when the rotation started and finished respectively.
-
-**Note**: `prune` needs a massive rewrite!
-
-I usually run both scripts as `cron` jobs. 
-
-### Other options
-
-If you use the `-q` option, you won't see a report.If you'd like to get email, specify an address with `-m`. In either case, the script will send everything into the scary void that is `/dev/null`.
+Log files from erroneous `backup` or `prune` runs can be seen in `/tmp`
 
 Future Work
 -----------
