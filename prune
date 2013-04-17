@@ -125,7 +125,7 @@ if [ ! -d $SNAPSHOT_FOLDER ]; then
 fi
 
 # Generate a list of ISO timestamps. Will be used to find and delete snapshots and log files
-LIST_OF_TIMESTAMPS=($(find $SNAPSHOT_FOLDER -maxdepth 1 -type d | xargs basename | sort | grep '\<[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>'))
+LIST_OF_TIMESTAMPS=($(find $SNAPSHOT_FOLDER -maxdepth 1 -type d -exec basename {} \;| sort | grep '\<[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>'))
 NUMBER_OF_SNAPSHOTS=${#LIST_OF_TIMESTAMPS[@]}
 
 echo -e "Snapshots   : $NUMBER_OF_SNAPSHOTS" >> $ROTATELOG
