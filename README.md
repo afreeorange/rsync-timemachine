@@ -75,8 +75,6 @@ For both the operations above, here's what `catalog` looks like:
     full backup           2013-04-08T13.48.47   2013-04-08T13.48.49
     snapshot              2013-04-08T14.07.03   2013-04-08T14.07.03
 
-The first one says "`full`" since it was the first *full* backup. Yeah...
-
 ### Backup modes
 
 Whichever mode you use, the script will `sync` if it's your *first* backup. Subsequent hard-linked snapshots and incrementals don't make sense if there's nothing to compare them to.
@@ -187,4 +185,4 @@ Footnotes
 2. [Not *really*](http://ss64.com/dates.html), since I'd have to use colons instead of periods. This is icky since you'd have to escape them.<br /> So, although my naming isn't 100% compliant, I wanted the folders to sort well and  not have characters that would require escaping or double-quotes. If you have a better nomenclature, let me know.
 3. Basically the output of using the `--progress` flag with `rsync`
 4. I realize it can be ridiculous, but it works for me. Do fork and improve!
-5. See the "*Multiple files and folders*" section of [this document](http://articles.slicehost.com/2007/10/10/rsync-exclude-files-and-folders)
+5. See the "Multiple files and folders" section of [this document](http://articles.slicehost.com/2007/10/10/rsync-exclude-files-and-folders)
