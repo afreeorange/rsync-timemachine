@@ -71,11 +71,11 @@ A few more things have happened:
 
 For both the operations above, here's what `catalog` looks like:
 
-    Operation      Started              Finished
-    full           2013-04-08T13.48.47  2013-04-08T13.48.49  
-    snap           2013-04-08T14.07.03  2013-04-08T14.07.03
+    Operation             Started               Finished
+    full backup           2013-04-08T13.48.47   2013-04-08T13.48.49
+    snapshot              2013-04-08T14.07.03   2013-04-08T14.07.03
 
-The first one says "`full`" since it was the first *full* backup. Yeah.
+The first one says "`full`" since it was the first *full* backup. Yeah...
 
 ### Backup modes
 
@@ -126,7 +126,8 @@ After removing older snapshots, three things then happen:
 
 In the catalog, you'll see an entry like this
 
-    rote ( 12,  7) 2013-04-08T15.48.53  2013-04-08T15.49.06
+    Operation             Started               Finished
+    prune                 2013-04-08T15.48.53   2013-04-08T15.49.06   (12,7)
 
 This means that the `rotate` script found 12 snapshots (or incrementals) and was asked to *keep* 7. The left and right timestamps correspond to when the rotation started and finished respectively.
 
@@ -156,11 +157,11 @@ For example, here's a listing of some incomplete snapshots:
 
 The `catalog` looks like this
 
-    Operation      Started              Finished
-    full           2013-04-08T13.48.47  2013-04-08T13.48.49  
-    snap           2013-04-08T13.51.14  No
-    snap           2013-04-08T14.07.03  2013-04-08T14.07.03
-    snap           2013-04-08T15.10.11  No
+    Operation             Started               Finished
+    full backup           2013-04-08T13.48.47   2013-04-08T13.48.49
+    snapshot              2013-04-08T13.51.14   No
+    snapshot              2013-04-08T14.07.03   2013-04-08T14.07.03
+    snapshot              2013-04-08T13.51.14   No
 
 **Note**: `rsync` will exit non-zero if a few files have vanished before it could transfer them. I consider this as normal, and the script doesn't complain about it either.
 

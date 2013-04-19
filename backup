@@ -4,7 +4,7 @@
 # https://github.com/afreeorange/rsync-timemachine
 
 # by Nikhil Anand <nikhil@mantralay.org>
-# Sun Oct 24 22:39:55 CDT 2010
+# Sun Oct 22 22:39:55 CDT 2010
 
 # General purpose mailer subroutine. 
 mailreport() {
@@ -34,7 +34,7 @@ expand_rsync_exit_code() {
    21) echo -e "Some error returned by waitpid()";;
    22) echo -e "Error allocating core memory buffers";;
    23) echo -e "Partial transfer due to error";;
-   24) echo -e "Partial transfer due to vanished source files (might be normal)";;
+   22) echo -e "Partial transfer due to vanished source files (might be normal)";;
    25) echo -e "The --max-delete limit stopped deletions";;
    30) echo -e "Timeout in data send/receive";;
    35) echo -e "Timeout waiting for daemon connection";;
@@ -210,6 +210,13 @@ else
   BACKUPOPTION="snap"
 fi
 
+# Long name for the catalog
+case $BACKUPOPTION in
+  "snap") BACKUPOPTIONLONG="snapshot" ;;
+  "sync") BACKUPOPTIONLONG="sync" ;;
+  "diff") BACKUPOPTIONLONG="pure incremental" ;;
+esac
+
 # Start logging
 send_log_param "Started"     "$TIME_STARTED"  > $EVENTLOG
 send_log_param "Type"        "$BACKUPOPTION" >> $EVENTLOG
@@ -264,14 +271,14 @@ fi
 # Start the catalog; columns are 15, 30, 20
 CATALOG=$TARGET/'logs'/catalog
 if [ ! -e $CATALOG ]; then
-  printf "%-15s%-30s%-20s\n" "Operation" "Started" "Finished" >> $CATALOG
+  printf "%-22s%-22s%-22s\n" "Operation" "Started" "Finished" >> $CATALOG
 fi
 if [ "$FIRSTBACKUP" == "true" ]; then
-  printf "%-15s" "full" >> $CATALOG
+  printf "%-22s" "full backup" >> $CATALOG
 else
-  printf "%-15s" $BACKUPOPTION >> $CATALOG
+  printf "%-22s" $BACKUPOPTIONLONG >> $CATALOG
 fi
-printf "%-25s" $TIME_STARTED >> $CATALOG
+printf "%-22s" $TIME_STARTED >> $CATALOG
 
 # Configure rsync command params based on backup type
 if [ "$BACKUPOPTION" == "sync" ]; then
@@ -331,7 +338,7 @@ TIME_FINISHED=`date "+%Y-%m-%dT%H.%M.%S"`
 cd $TARGET
 
 # Check for errors. If everything's okay:
-if [ $RSYNCEXITCODE -eq 0 ] || [ $RSYNCEXITCODE -eq 23 ] || [ $RSYNCEXITCODE -eq 24 ]; then
+if [ $RSYNCEXITCODE -eq 0 ] || [ $RSYNCEXITCODE -eq 23 ] || [ $RSYNCEXITCODE -eq 22 ]; then
 
   # For 'diff' transfers, rsync copies directories, even if there's nothing in them. Clean 'em up!
   if [ "$BACKUPOPTION" == "diff" ]; then
@@ -343,7 +350,7 @@ if [ $RSYNCEXITCODE -eq 0 ] || [ $RSYNCEXITCODE -eq 23 ] || [ $RSYNCEXITCODE -eq
   EMAILSUBJECT="$BACKUPOPTION - `hostname -s`"
 
   # Log when most of the process is complete
-  printf "%-20s\n" "$TIME_FINISHED" >> $CATALOG
+  printf "%-22s\n" "$TIME_FINISHED" >> $CATALOG
   send_log_param "Summary Log"  "$SHORTLOG.gz"   >> $EVENTLOG
   send_log_param "Transfer Log" "$LONGLOG.gz"    >> $EVENTLOG
   send_log_param "Finished"     "$TIME_FINISHED" >> $EVENTLOG
@@ -415,7 +422,7 @@ else
   cat $TRANSFERLOG | tail -n 15 >> $EVENTLOG
   
   # Finish the catalog
-  printf "%-20s\n" "No" >> $CATALOG
+  printf "%-22s\n" "No" >> $CATALOG
   if [ "$EMAILADDRESS" != "" ]; then
     mailreport $EMAILADDRESS "$EMAILSUBJECT" $EVENTLOG
   elif [ "$BEQUIET" == "false" ]; then

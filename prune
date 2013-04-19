@@ -218,7 +218,7 @@ mv $ROTATELOG $SNAPSHOT_FOLDER/logs/rotatelog.$TIME_STARTED
 gzip -9 $SNAPSHOT_FOLDER/logs/rotatelog.$TIME_STARTED
 
 # Finish the catalog
-printf "%-4s (%3d,%3d) %-25s%-20s\n" "rote" $NUMBER_OF_SNAPSHOTS $NUMBER_TO_KEEP $TIME_STARTED $TIME_FINISHED >> $CATALOG
+printf "%-22s%-22s%-22s(%d,%d)\n" "prune" $TIME_STARTED $TIME_FINISHED $NUMBER_OF_SNAPSHOTS $NUMBER_TO_KEEP >> $CATALOG
 
 # Remove lock
 rm $LOCKFILE
