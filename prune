@@ -183,14 +183,14 @@ fi
 echo -e "\n---- Removal Log ----\n" >> $DELETELOG
 CLEAN_TO_INDEX=$(( NUMBER_OF_SNAPSHOTS - NUMBER_TO_KEEP - 1 ))
 for i in $($SEQUENCE 0 $CLEAN_TO_INDEX); do
-  rm -rf $SNAPSHOT_FOLDER/${LIST_OF_TIMESTAMPS[i]} 2>> $DELETELOG
-  echo "Removed" $SNAPSHOT_FOLDER/${LIST_OF_TIMESTAMPS[i]} >> $DELETELOG
+  rm -rf $SNAPSHOT_FOLDER/${LIST_OF_TIMESTAMPS[i]}                        2>> $DELETELOG
+  echo "Removed" $SNAPSHOT_FOLDER/${LIST_OF_TIMESTAMPS[i]}                 >> $DELETELOG
 
-  rm -rf $SNAPSHOT_FOLDER/logs/backuplog.${LIST_OF_TIMESTAMPS[i]}.gz 2>> $DELETELOG
-  echo "       " $SNAPSHOT_FOLDER/logs/${LIST_OF_TIMESTAMPS[i]}.full.gz >> $DELETELOG
+  rm -rf $SNAPSHOT_FOLDER/logs/backuplog.${LIST_OF_TIMESTAMPS[i]}.gz      2>> $DELETELOG
+  echo "       " $SNAPSHOT_FOLDER/logs/${LIST_OF_TIMESTAMPS[i]}.full.gz    >> $DELETELOG
 
   rm -rf $SNAPSHOT_FOLDER/logs/backuplog.${LIST_OF_TIMESTAMPS[i]}.full.gz 2>> $DELETELOG
-  echo "       " $SNAPSHOT_FOLDER/logs/${LIST_OF_TIMESTAMPS[i]}.gz >> $DELETELOG
+  echo "       " $SNAPSHOT_FOLDER/logs/${LIST_OF_TIMESTAMPS[i]}.gz         >> $DELETELOG
 done
 
 # Remove older rotation logs

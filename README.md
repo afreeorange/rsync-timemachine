@@ -159,7 +159,7 @@ The `catalog` looks like this
     full backup           2013-04-08T13.48.47   2013-04-08T13.48.49
     snapshot              2013-04-08T13.51.14   No
     snapshot              2013-04-08T14.07.03   2013-04-08T14.07.03
-    snapshot              2013-04-08T13.51.14   No
+    snapshot              2013-04-08T15.10.11   No
 
 **Note**: `rsync` will exit non-zero if a few files have vanished before it could transfer them. I consider this as normal, and the script doesn't complain about it either.
 
