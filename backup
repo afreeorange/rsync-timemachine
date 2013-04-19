@@ -7,7 +7,7 @@
 # Sun Oct 24 22:39:55 CDT 2010
 
 # General purpose mailer subroutine. 
-function mailreport() {
+mailreport() {
   EMAILADDRESS=$1
   SUBJECT=$2
   MESSAGEFILE=$3
@@ -16,7 +16,7 @@ function mailreport() {
 }
 
 # Expand rsync error codes
-function expand_rsync_exit_code() {
+expand_rsync_exit_code() {
   EXITCODE=$1
   case $EXITCODE in
     1) echo -e "Syntax or usage error";;
@@ -44,7 +44,7 @@ function expand_rsync_exit_code() {
 
 # Resolve symlinks since "readlink -f" won't work on OS X
 # http://stackoverflow.com/a/1116890
-function resolve_link() {
+resolve_link() {
   TARGET_FILE=$1
 
   cd `dirname $TARGET_FILE`
@@ -66,7 +66,7 @@ function resolve_link() {
 }
 
 # Usage information
-function usage() {
+usage() {
   echo -e "
 `basename $0` [OPTIONS]
 
@@ -81,6 +81,11 @@ Options
  -q   be quiet and show no output
 "
   exit 
+}
+
+# Send nicely formatted backup params to log
+send_log_param() {
+  printf "%-20s : %s\n" "$1" "$2"
 }
 
 # Log the time started
@@ -156,12 +161,12 @@ LONGLOG=$TARGET/'logs'/backuplog.$TIME_STARTED.full
 LOCKFILE="/tmp/backuplock"
 SOURCESERVER=$(hostname -s)
 
-# Start logging
-echo -e "Started     : $TIME_STARTED"     > $EVENTLOG
-echo -e "Type        : $BACKUPOPTION" >> $EVENTLOG
-echo -e "Source      : $SOURCE"       >> $EVENTLOG
-echo -e "Host        : $SOURCESERVER" >> $EVENTLOG
-echo -e "Destination : $TARGET"       >> $EVENTLOG
+# Check that a source and target have been specified at a minimum
+if [ -z $SOURCE ] || [ -z $TARGET]; then
+  echo -e "! You must specify a source (-s) and target (-d) at a minimum"
+  usage
+  exit 1
+fi
 
 # Does local source exist?
 if [ ! -d $SOURCE ]; then
@@ -205,10 +210,17 @@ else
   BACKUPOPTION="snap"
 fi
 
+# Start logging
+send_log_param "Started"     "$TIME_STARTED"  > $EVENTLOG
+send_log_param "Type"        "$BACKUPOPTION" >> $EVENTLOG
+send_log_param "Source"      "$SOURCE"       >> $EVENTLOG
+send_log_param "Host"        "$SOURCESERVER" >> $EVENTLOG
+send_log_param "Destination" "$TARGET"       >> $EVENTLOG
+
 # Check for an includes file
 if [ -e "$BACKUPINCLUDESFILE" ] && [ -f $BACKUPINCLUDESFILE ]; then
   INCLUDESFLAG="--include-from=$BACKUPINCLUDESFILE"
-  echo -e "Includes    : $BACKUPINCLUDESFILE" >> $EVENTLOG
+  send_log_param "Includes" "$BACKUPINCLUDESFILE" >> $EVENTLOG
 else
   INCLUDESFLAG=""
 fi
@@ -216,7 +228,7 @@ fi
 # Check for an excludes file
 if [ -e "$BACKUPEXCLUDESFILE" ] && [ -f $BACKUPEXCLUDESFILE ]; then
   INCLUDESFLAG="--exclude-from=$BACKUPEXCLUDESFILE"
-  echo -e "Excludes    : $BACKUPEXCLUDESFILE" >> $EVENTLOG
+  send_log_param "Excludes" "$BACKUPINCLUDESFILE" >> $EVENTLOG
 else
   INCLUDESFLAG=""
 fi
@@ -239,9 +251,9 @@ fi
 # Start some initial setup. Make sure that source-named directory exists at target
 if [ ! -d $TARGET/'latest' ]; then
   FIRSTBACKUP='true'
-  echo -e "Full Backup : Yes" >> $EVENTLOG
+  send_log_param "Full backup" "Yes" >> $EVENTLOG
 else
-  echo -e "Full Backup : No" >> $EVENTLOG
+  send_log_param "Full backup" "No" >> $EVENTLOG
 fi
 
 # Make sure we have a place to put the final transfer log
@@ -249,17 +261,17 @@ if [ ! -d $TARGET/'logs' ]; then
   mkdir $TARGET/'logs'
 fi
 
-# Start the catalog; columns are 15, 20, 20 (TODO: use sprintf?)
+# Start the catalog; columns are 15, 30, 20
 CATALOG=$TARGET/'logs'/catalog
 if [ ! -e $CATALOG ]; then
-  echo -e "Operation      Started              Finished" >> $CATALOG
+  printf "%-15s%-30s%-20s\n" "Operation" "Started" "Finished" >> $CATALOG
 fi
 if [ "$FIRSTBACKUP" == "true" ]; then
-  echo -n "full           " >> $CATALOG
+  printf "%-15s" "full" >> $CATALOG
 else
-  echo -n $BACKUPOPTION"           " >> $CATALOG
+  printf "%-15s" $BACKUPOPTION >> $CATALOG
 fi
-echo -n $TIME_STARTED"  " >> $CATALOG
+printf "%-25s" $TIME_STARTED >> $CATALOG
 
 # Configure rsync command params based on backup type
 if [ "$BACKUPOPTION" == "sync" ]; then
@@ -331,10 +343,10 @@ if [ $RSYNCEXITCODE -eq 0 ] || [ $RSYNCEXITCODE -eq 23 ] || [ $RSYNCEXITCODE -eq
   EMAILSUBJECT="$BACKUPOPTION - `hostname -s`"
 
   # Log when most of the process is complete
-  echo $TIME_FINISHED"  " >> $CATALOG
-  echo -e "Summary Log : $SHORTLOG.gz" >> $EVENTLOG
-  echo -e "Transfer Log: $LONGLOG.gz"  >> $EVENTLOG
-  echo -e "Finished    : $TIME_FINISHED"  >> $EVENTLOG
+  printf "%-20s\n" "$TIME_FINISHED" >> $CATALOG
+  send_log_param "Summary Log"  "$SHORTLOG.gz"   >> $EVENTLOG
+  send_log_param "Transfer Log" "$LONGLOG.gz"    >> $EVENTLOG
+  send_log_param "Finished"     "$TIME_FINISHED" >> $EVENTLOG
 
   # Log reference directory if incremental backup
   if [ "$BACKUPOPTION" == "diff" ]; then
@@ -345,7 +357,11 @@ if [ $RSYNCEXITCODE -eq 0 ] || [ $RSYNCEXITCODE -eq 23 ] || [ $RSYNCEXITCODE -eq
   elif [ "$BACKUPOPTION" == "snap" ]; then
     echo -e "\n---- Other notes ----\n" >> $EVENTLOG
     SNAPSHOTNUMBER=$(find $TARGET -maxdepth 1 -type d | sort | grep -c '\<[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>')
-    echo -e "There exist $SNAPSHOTNUMBER snapshot(s) at the destination" >> $EVENTLOG
+    if [ $SNAPSHOTNUMBER -eq 1 ]; then
+      echo -e "This is the first full backup" >> $EVENTLOG
+    else
+      echo -e "There exist $SNAPSHOTNUMBER snapshots at the destination" >> $EVENTLOG
+    fi
   fi
 
   # Show the last few lines of the rsync command
@@ -389,9 +405,9 @@ else
   
   # Log error
   ERRORDESCRIPTION=$(expand_rsync_exit_code $RSYNCEXITCODE)
-  echo -e "\nExit Code   : $RSYNCEXITCODE" >> $EVENTLOG
-  echo -e "Description : $ERRORDESCRIPTION" >> $EVENTLOG
-  echo -e "Error File  : $EVENTLOG" >> $EVENTLOG
+  send_log_param "Exit Code"   "$RSYNCEXITCODE"    >> $EVENTLOG
+  send_log_param "Description" "$ERRORDESCRIPTION" >> $EVENTLOG
+  send_log_param "Error File"  "$EVENTLOG"         >> $EVENTLOG
   echo -e "\nThe backup script encountered an error. The error log specified above has not been removed." >> $EVENTLOG
   
   # Spit error output
@@ -399,7 +415,7 @@ else
   cat $TRANSFERLOG | tail -n 15 >> $EVENTLOG
   
   # Finish the catalog
-  echo "No                   " >> $CATALOG
+  printf "%-20s\n" "No" >> $CATALOG
   if [ "$EMAILADDRESS" != "" ]; then
     mailreport $EMAILADDRESS "$EMAILSUBJECT" $EVENTLOG
   elif [ "$BEQUIET" == "false" ]; then

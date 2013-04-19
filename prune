@@ -8,16 +8,16 @@
 # Mon Oct 25 09:22:28 CDT 2010
 
 # General purpose mailer subroutine. 
-function mailreport() {
-    EMAILADDRESS=$1
-    SUBJECT=$2
-    MESSAGEFILE=$3
+mailreport() {
+  EMAILADDRESS=$1
+  SUBJECT=$2
+  MESSAGEFILE=$3
 
-    mail -s "$SUBJECT" $EMAILADDRESS < $MESSAGEFILE
+  mail -s "$SUBJECT" $EMAILADDRESS < $MESSAGEFILE
 }
 
 # Emulate the 'seq' command for OS X. This _could_ be done with 'jot', but I'm le lazy.
-function _seq() {
+_seq() {
   counter="$1"
   max="$2"
 
@@ -35,8 +35,13 @@ function _seq() {
   return 0
 }
 
+# Send nicely formatted backup params to log
+send_log_param() {
+  printf "%-20s : %s\n" "$1" "$2"
+}
+
 # Show script usage information
-function usage() {
+usage() {
   echo -e "
 `basename $0` [OPTIONS]
 
@@ -51,7 +56,9 @@ Options
 }
 
 # Show usage if no params
-[[ $# -eq 0 ]] && usage
+if [ $# -eq 0 ]; then
+  usage
+fi
 
 # Start collecting rotation params
 BEQUIET=false
@@ -99,10 +106,26 @@ SOURCESERVER=$(hostname -s)
 CATALOG="$SNAPSHOT_FOLDER/logs/catalog"
 
 # Start logging
-echo -e "Started     : $TIME_STARTED"    >> $ROTATELOG
-echo -e "Backup path : $SNAPSHOT_FOLDER" >> $ROTATELOG
+send_log_param "Started"     "$TIME_STARTED"    >> $ROTATELOG
+send_log_param "Backup path" "$SNAPSHOT_FOLDER" >> $ROTATELOG
 
 ###### BEGIN SANITY CHECK #####
+
+# Show usage if snapshot folder's not specified
+if [ -z $SNAPSHOT_FOLDER ]; then
+  usage
+fi
+
+# Check for the existence of the backup folder 
+if [ ! -d $SNAPSHOT_FOLDER ]; then
+  echo -e "\nCould not find source $SNAPSHOT_FOLDER" >> $ROTATELOG
+  if [ ! -z $EMAILADDRESS ]; then
+    mailreport $EMAILADDRESS "eror - $SOURCESERVER" $ROTATELOG
+  elif [ ! -z $BEQUIET ]; then
+    more $ROTATELOG
+  fi
+  exit 1
+fi
 
 # Check the number of snapshots specified
 if [ -z $NUMBER_TO_KEEP ]; then
@@ -113,23 +136,12 @@ case "$NUMBER_TO_KEEP" in
          0) NUMBER_TO_KEEP=10
 esac
 
-# Check for the existence of the backup folder 
-if [ ! -d $SNAPSHOT_FOLDER ]; then
-  echo -e "\nCould not find source $SNAPSHOT_FOLDER" >> $ROTATELOG
-  if [ ! -z $EMAILADDRESS ]; then
-      mailreport $EMAILADDRESS "eror - $SOURCESERVER" $ROTATELOG
-  elif [ ! -z $BEQUIET ]; then
-      more $ROTATELOG
-  fi
-  exit 1
-fi
-
 # Generate a list of ISO timestamps. Will be used to find and delete snapshots and log files
 LIST_OF_TIMESTAMPS=($(find $SNAPSHOT_FOLDER -maxdepth 1 -type d -exec basename {} \;| sort | grep '\<[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{2\}\>'))
 NUMBER_OF_SNAPSHOTS=${#LIST_OF_TIMESTAMPS[@]}
 
-echo -e "Snapshots   : $NUMBER_OF_SNAPSHOTS" >> $ROTATELOG
-echo -e "Keep        : $NUMBER_TO_KEEP"      >> $ROTATELOG
+send_log_param "Snapshots" "$NUMBER_OF_SNAPSHOTS" >> $ROTATELOG
+send_log_param "Keep"      "$NUMBER_TO_KEEP"      >> $ROTATELOG
 
 # Check if any backup entities exist in source dir
 if [ $NUMBER_OF_SNAPSHOTS -eq "0" ]; then
@@ -156,9 +168,9 @@ fi
 if [ -e "$LOCKFILE" ]; then
   echo -e "\nAnother rotation job exists for the same client. Aborting." >> $ROTATELOG
   if [ "$EMAILADDRESS" != "" ]; then
-      mailreport $EMAILADDRESS "eror - $SOURCESERVER" $ROTATELOG
+    mailreport $EMAILADDRESS "eror - $SOURCESERVER" $ROTATELOG
   elif [ "$BEQUIET" == "false" ]; then
-      more $ROTATELOG
+    more $ROTATELOG
   fi
   exit 1
 else
@@ -188,7 +200,7 @@ fi
 
 # Log finish time
 TIME_FINISHED=`date "+%Y-%m-%dT%H.%M.%S"`
-echo -e "Finished    : $TIME_FINISHED" >> $ROTATELOG
+send_log_param "Finished" "$TIME_FINISHED" >> $ROTATELOG
 
 # Finish the rotation log
 cat $DELETELOG >> $ROTATELOG
@@ -206,9 +218,7 @@ mv $ROTATELOG $SNAPSHOT_FOLDER/logs/rotatelog.$TIME_STARTED
 gzip -9 $SNAPSHOT_FOLDER/logs/rotatelog.$TIME_STARTED
 
 # Finish the catalog
-echo -n "rote " >> $CATALOG
-CATALOGCOUNT=$(printf "(%3d,%3d) %s  %s" $NUMBER_OF_SNAPSHOTS $NUMBER_TO_KEEP $TIME_STARTED $TIME_FINISHED)
-echo $CATALOGCOUNT >> $CATALOG
+printf "%-4s (%3d,%3d) %-25s%-20s\n" "rote" $NUMBER_OF_SNAPSHOTS $NUMBER_TO_KEEP $TIME_STARTED $TIME_FINISHED >> $CATALOG
 
 # Remove lock
 rm $LOCKFILE

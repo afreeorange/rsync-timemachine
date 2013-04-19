@@ -12,7 +12,7 @@ Both scripts work well in POSIX mode, and *seem* to work in the Korn shell as we
 Prerequisites
 -------------
 
-You'll need `bash` (or `ksh`), `rsync`, and `mail` commands to use the scripts[1]. Untested on Cygwin.
+You'll need `bash`, `rsync`, and `mail` commands to use the scripts[1]. Untested on Cygwin.
 
 Usage
 -----
