@@ -162,7 +162,7 @@ LOCKFILE="/tmp/backuplock"
 SOURCESERVER=$(hostname -s)
 
 # Check that a source and target have been specified at a minimum
-if [ -z $SOURCE ] || [ -z $TARGET]; then
+if [ -z $SOURCE ] || [ -z $TARGET ]; then
   echo -e "! You must specify a source (-s) and target (-d) at a minimum"
   usage
   exit 1
