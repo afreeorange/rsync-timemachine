@@ -74,6 +74,7 @@ Options
  -s   absolute path to source 
  -d   backup destination
  -t   type of backup: sync, snap or diff (default is 'snap')
+ -x   don't create timestamped folder in target (valid only for sync)
  -f   any extra flags to the rsync command (e.g. ssh)
  -i   a file containing patterns to include in the backup
  -e   a file containing patterns to exclude from the backup
@@ -112,8 +113,9 @@ fi
 
 # Start collecting params
 BEQUIET=false
+PURESYNC=false
 EMAILADDRESS=""
-while getopts ":s:d:t:i:e:f:e:m:q" opt; do
+while getopts ":s:d:t:xi:e:f:e:m:q" opt; do
   case $opt in
   s)
     SOURCE=$OPTARG
@@ -123,6 +125,9 @@ while getopts ":s:d:t:i:e:f:e:m:q" opt; do
     ;;
   t)
     BACKUPOPTION=$OPTARG
+    ;;
+  x)
+    PURESYNC=true
     ;;
   i)
     BACKUPINCLUDESFILE=$OPTARG
@@ -282,11 +287,15 @@ printf "%-22s" $TIME_STARTED >> $CATALOG
 
 # Configure rsync command params based on backup type
 if [ "$BACKUPOPTION" == "sync" ]; then
-  if [ "$FIRSTBACKUP" == "true" ]; then
-    mkdir $TARGET/$TIME_STARTED
-    BACKUPDIRECTORY=$TARGET/$TIME_STARTED
+  if [ "$PURESYNC" == "true" ]; then
+    BACKUPDIRECTORY=$TARGET
   else
-    BACKUPDIRECTORY=$TARGET/'latest'
+    if [ "$FIRSTBACKUP" == "true" ]; then
+      mkdir $TARGET/$TIME_STARTED
+      BACKUPDIRECTORY=$TARGET/$TIME_STARTED
+    else
+      BACKUPDIRECTORY=$TARGET/'latest'
+    fi
   fi
   LINKFLAG=""
   DELETEFLAG="--delete"
