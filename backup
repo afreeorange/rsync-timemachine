@@ -239,10 +239,10 @@ fi
 
 # Check for an excludes file
 if [ -e "$BACKUPEXCLUDESFILE" ] && [ -f $BACKUPEXCLUDESFILE ]; then
-  INCLUDESFLAG="--exclude-from=$BACKUPEXCLUDESFILE"
+  EXCLUDESFLAG="--exclude-from=$BACKUPEXCLUDESFILE"
   send_log_param "Excludes" "$BACKUPINCLUDESFILE" >> $EVENTLOG
 else
-  INCLUDESFLAG=""
+  EXCLUDESFLAG=""
 fi
 
 # Check if a competing backup process exists
@@ -335,7 +335,7 @@ else
 fi
 
 # Perform the actual transfer over SSH
-rsync -avh --no-whole-file --numeric-ids --progress --stats $INCLUDESFLAG $LINKFLAG $DELETEFLAG $EXTRAFLAGS "$SOURCE" "$BACKUPDIRECTORY" 2>&1 >> $TRANSFERLOG
+rsync -avh --no-whole-file --numeric-ids --progress --stats $EXCLUDESFLAG $INCLUDESFLAG $LINKFLAG $DELETEFLAG $EXTRAFLAGS "$SOURCE" "$BACKUPDIRECTORY" 2>&1 >> $TRANSFERLOG
 
 # Log the exit code
 RSYNCEXITCODE=$?
