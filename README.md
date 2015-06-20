@@ -172,7 +172,10 @@ Future Work
 
 * Rewrite the whole thing. Properly this time ;)
 * A Python port of both scripts for lulz.
-* Think about a Windows version.
+* Add real Time Machine mode to `prune`:
+** Hourly snapshots for 24 hours
+** Daily snapshots for past month
+** Weekly snapshots for all previous months (oldest of these are removed per some policy (e.g. disk is full))
 * Think about how noone will ever use this except myself, so I should leave it alone and go for a walk.
 
 License
