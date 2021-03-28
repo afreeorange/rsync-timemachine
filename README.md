@@ -1,4 +1,4 @@
-An rsync-based snapshotting script in bash. Includes a handy-dandy rotation script (also in bash). 
+An `rsync`-based snapshotting script in `bash`. Includes a handy-dandy rotation script (also in `bash`). 
 
 Introduction
 ------------
@@ -170,13 +170,12 @@ Log files from erroneous `backup` or `prune` runs can be seen in `/tmp`
 Future Work
 -----------
 
-* Rewrite the whole thing. Properly this time ;)
-* A Python port of both scripts for lulz.
+* Rewrite the whole thing. Properly this time 😆
 * Add real Time Machine mode to `prune`:
 ** Hourly snapshots for 24 hours
 ** Daily snapshots for past month
 ** Weekly snapshots for all previous months (oldest of these are removed per some policy (e.g. disk is full))
-* Think about how noone will ever use this except myself, so I should leave it alone and go for a walk.
+* Think about how no one will ever use this except myself, so I should leave it alone and go for a walk.
 
 License
 -------
@@ -190,4 +189,4 @@ Footnotes
 2. [Not *really*](http://ss64.com/dates.html), since I'd have to use colons instead of periods. This is icky since you'd have to escape them.<br /> So, although my naming isn't 100% compliant, I wanted the folders to sort well and  not have characters that would require escaping or double-quotes. If you have a better nomenclature, let me know.
 3. Basically the output of using the `--progress` flag with `rsync`
 4. I realize it can be ridiculous, but it works for me. Do fork and improve!
-5. See the "Multiple files and folders" section of [this document](http://articles.slicehost.com/2007/10/10/rsync-exclude-files-and-folders)
+5. See the "Multiple files and folders" section of [this document](https://web.archive.org/web/20080907105459/http://articles.slicehost.com/2007/10/10/rsync-exclude-files-and-folders)
