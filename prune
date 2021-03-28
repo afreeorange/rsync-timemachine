@@ -4,8 +4,8 @@
 # Complimentary to backup
 # https://github.com/afreeorange/rsync-timemachine
 
-# Nikhil Anand <anand.nikhil@gmail.com>
-# Mon Oct 25 09:22:28 CDT 2010
+# by Nikhil Anand <mail@nikhil.io>
+# Initial Version: Mon Oct 25 09:22:28 CDT 2010
 
 # General purpose mailer subroutine.
 mailreport() {

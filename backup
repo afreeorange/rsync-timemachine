@@ -3,8 +3,8 @@
 # rsync-based backup script for Linux and OS X
 # https://github.com/afreeorange/rsync-timemachine
 
-# by Nikhil Anand <nikhil@mantralay.org>
-# Sun Oct 22 22:39:55 CDT 2010
+# by Nikhil Anand <mail@nikhil.io>
+# Initial Version: Sun Oct 22 22:39:55 CDT 2010
 
 # General purpose mailer subroutine.
 mailreport() {
