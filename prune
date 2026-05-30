@@ -9,40 +9,41 @@
 
 # General purpose mailer subroutine.
 mailreport() {
-  EMAILADDRESS=$1
-  SUBJECT=$2
-  MESSAGEFILE=$3
+    EMAILADDRESS=$1
+    SUBJECT=$2
+    MESSAGEFILE=$3
 
-  mail -s "$SUBJECT" "$EMAILADDRESS" <"$MESSAGEFILE"
+    mail -s "$SUBJECT" "$EMAILADDRESS" <"$MESSAGEFILE"
 }
 
 # Emulate the 'seq' command for OS X. This _could_ be done with 'jot', but I'm le lazy.
+# shellcheck disable=SC2329
 _seq() {
-  counter="$1"
-  max="$2"
+    counter="$1"
+    max="$2"
 
-  if [ "$#" -eq 2 ]; then
-    step=1
-  else
-    step=$3
-  fi
+    if [ "$#" -eq 2 ]; then
+        step=1
+    else
+        step=$3
+    fi
 
-  while [[ $counter -le $max ]]; do
-    echo "$counter"
-    counter=$((counter + step))
-  done
+    while [[ $counter -le $max ]]; do
+        echo "$counter"
+        counter=$((counter + step))
+    done
 
-  return 0
+    return 0
 }
 
 # Send nicely formatted backup params to log
 send_log_param() {
-  printf "%-20s : %s\n" "$1" "$2"
+    printf "%-20s : %s\n" "$1" "$2"
 }
 
 # Show script usage information
 usage() {
-  echo -e "
+    echo -e "
 $(basename "$0") [OPTIONS]
 
 Options
@@ -51,8 +52,8 @@ Options
  -r   remove old rotation logs (default)
  -m   email address to mail reports to
  -q   be quiet and show no output
-"
-  exit
+    "
+    exit
 }
 
 # Show usage if no params
@@ -62,31 +63,31 @@ Options
 BEQUIET=false
 EMAILADDRESS=""
 while getopts "d:n:rm:q" opt; do
-  case $opt in
-  d)
-    SNAPSHOT_FOLDER=$OPTARG
-    ;;
-  n)
-    NUMBER_TO_KEEP=$OPTARG
-    ;;
-  r)
-    DELETE_ROTATION_LOGS=true
-    ;;
-  m)
-    EMAILADDRESS=$OPTARG
-    ;;
-  q)
-    BEQUIET=true
-    ;;
-  \?)
-    echo "Invalid option: -$OPTARG" >&2
-    exit 1
-    ;;
-  :)
-    echo "Option -$OPTARG requires an argument." >&2
-    exit 1
-    ;;
-  esac
+    case $opt in
+        d)
+            SNAPSHOT_FOLDER=$OPTARG
+        ;;
+        n)
+            NUMBER_TO_KEEP=$OPTARG
+        ;;
+        r)
+            DELETE_ROTATION_LOGS=true
+        ;;
+        m)
+            EMAILADDRESS=$OPTARG
+        ;;
+        q)
+            BEQUIET=true
+        ;;
+        \?)
+            echo "Invalid option: -$OPTARG" >&2
+            exit 1
+        ;;
+        :)
+            echo "Option -$OPTARG requires an argument." >&2
+            exit 1
+        ;;
+    esac
 done
 
 # Log the start time
@@ -162,7 +163,7 @@ fi
 # Check platform and set the seq command
 SEQUENCE=_seq
 if [[ "$(uname)" == "Linux" ]]; then
-  SEQUENCE=$(which seq)
+  SEQUENCE=$(command -v seq)
 fi
 
 # Check if a competing backup process exists
